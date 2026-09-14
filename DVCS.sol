@@ -35,5 +35,63 @@ contract DVCS {
   //into, keeping client-side reconstruction bounded even for
   //unexpectedly large files(24kb*4096 =~ 96MB ceiling/blob).
   uint256 public constant MAX_CHUNK_PER_BLOB = 4096;
+  
+  //types 
+
+  enum Role {
+    None,// no access 0 
+    Reader,// 1 - can be tracked as explicit member of a privat repo
+    Contributor,// 2 can push commits, create branch/tags
+    Maintainer // 2 can also force update/delete branches, manage,collaborators
+  }
+
+  struct Commit{
+    bytes32 parent1; // for the root commit
+    bytes32 parent2; // non-zero only for merge commits
+    bytes32 treeRoot; //Merkle root of the commited file tree
+    string cid; // off chain content identifier
+    string message; //commit message
+    address author; // msg.sender that authored teh commit
+    uint64 timestamp; // block.timestamp at commit time 
+    bool exists;
+  }
+
+  struct Repository {
+    address owner;
+    string name;
+    bool isPrivate;
+    bool exists;
+    uint256 commitCount;
+    uint8 minApprovals; // pr need at least this many approvals to merge
+    mapping(bytes32 => Commit) commits;
+    mapping(string => bytes32) branchHead;
+    mapping(string => bool) branchExists;
+    string[] branchNames;
+    mapping(string => bytes32) tags;
+    mapping(string => bool) tagExists;
+    mapping(address => Role) roles;
+    address[] collaborators;
+  }
+
+  enum PRStatus {
+    Open,
+    Merged,
+    Closed
+  }
+
+  struct PullRequest {
+    bool exists;
+    string sourceBranch;
+    string targetBranch;
+    address author;
+    string title;
+    string description;
+    PRStatus status;
+    uint256 approvalCount;
+    bytes32 mergedCommit;
+    uint64 createdAt;
+    mapping(address => bool) hasApproved;
+  }
+
 
 }
