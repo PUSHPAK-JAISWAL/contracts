@@ -110,4 +110,40 @@ contract DVCS {
   //
   mapping(bytes32 => mapping(uint256 => PullRequest)) private pullRequests;
   mapping(bytes32 => uint256) public pullRequestCount;
+  
+  //events 
+  //
+  event RepositoryCreated(bytes32 indexed repoId, address indexed owner, string name, bool isPrivate);
+    event CommitPushed(bytes32 indexed repoId, bytes32 indexed commitHash, bytes32 parent1, bytes32 parent2, address indexed author, string cid);
+    event BranchCreated(bytes32 indexed repoId, string branchName, bytes32 commitHash);
+    event BranchUpdated(bytes32 indexed repoId, string branchName, bytes32 oldHead, bytes32 newHead, bool forced);
+    event BranchDeleted(bytes32 indexed repoId, string branchName);
+    event TagCreated(bytes32 indexed repoId, string tagName, bytes32 commitHash);
+    event CollaboratorUpdated(bytes32 indexed repoId, address indexed account, Role role);
+    event OwnershipTransferred(bytes32 indexed repoId, address indexed previousOwner, address indexed newOwner);
+    event VisibilityChanged(bytes32 indexed repoId, bool isPrivate);
+
+    event PullRequestOpened(
+        bytes32 indexed repoId, uint256 indexed prId, address indexed author, string sourceBranch, string targetBranch, string title
+    );
+    event PullRequestApproved(bytes32 indexed repoId, uint256 indexed prId, address indexed approver, uint256 approvalCount);
+    event PullRequestMerged(bytes32 indexed repoId, uint256 indexed prId, bytes32 mergedCommit, address indexed merger);
+    event PullRequestClosed(bytes32 indexed repoId, uint256 indexed prId, address indexed closer);
+
+    /// @notice One chunk of a blob's (possibly encrypted) content. Emitting
+    ///         data as an event rather than writing it to contract storage
+    ///         keeps this cheap (~16 gas/byte instead of ~20000 gas per 32
+    ///         bytes for SSTORE), while still being permanent and readable
+    ///         by any client via eth_getLogs -- no IPFS or other off-chain
+    ///         service required. NOTE: event data is still public on-chain;
+    ///         `encrypted` only tells readers whether `data` is ciphertext,
+    ///         it does not restrict who can read it.
+    event BlobChunk(
+        bytes32 indexed repoId,
+        bytes32 indexed blobHash,
+        uint32 chunkIndex,
+        uint32 totalChunks,
+        bool encrypted,
+        bytes data
+    );
 }
