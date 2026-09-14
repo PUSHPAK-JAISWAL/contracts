@@ -170,5 +170,30 @@ contract DVCS {
     error CannotApproveOwnPR();
     error AlreadyApproved();
     error NotEnoughApprovals();
+  
+  //modifiers 
+    //
+  modifier repoExists(bytes32 repoId) {
+        if (!repositories[repoId].exists) revert RepositoryNotFound();
+        _;
+    }
 
+    /// @dev Contributor or higher (or the owner) may push commits / create branches & tags.
+    modifier onlyContributor(bytes32 repoId) {
+        Repository storage r = repositories[repoId];
+        if (msg.sender != r.owner && r.roles[msg.sender] < Role.Contributor) revert NotAuthorized();
+        _;
+    }
+
+    /// @dev Maintainer or higher (or the owner) may force-push, delete branches, manage collaborators.
+    modifier onlyMaintainer(bytes32 repoId) {
+        Repository storage r = repositories[repoId];
+        if (msg.sender != r.owner && r.roles[msg.sender] < Role.Maintainer) revert NotAuthorized();
+        _;
+    }
+
+    modifier onlyOwner(bytes32 repoId) {
+        if (repositories[repoId].owner != msg.sender) revert NotAuthorized();
+        _;
+    }
 }
