@@ -554,4 +554,27 @@ contract DVCS {
     function listBranches(bytes32 repoId) external view repoExists(repoId) returns (string[] memory) {
         return repositories[repoId].branchNames;
     }
+
+  // Tags (immutable pointers, not like branches)
+    //
+    function createTag(bytes32 repoId, string calldata tagName, bytes32 commitHash)
+        external
+        repoExists(repoId)
+        onlyContributor(repoId)
+    {
+        if (bytes(tagName).length == 0) revert InvalidName();
+        Repository storage r = repositories[repoId];
+        if (!r.commits[commitHash].exists) revert CommitNotFound();
+        if (r.tagExists[tagName]) revert TagAlreadyExists();
+
+        r.tagExists[tagName] = true;
+        r.tags[tagName] = commitHash;
+        emit TagCreated(repoId, tagName, commitHash);
+    }
+
+    function tagCommit(bytes32 repoId, string calldata tagName) external view repoExists(repoId) returns (bytes32) {
+        Repository storage r = repositories[repoId];
+        if (!r.tagExists[tagName]) revert TagNotFound();
+        return r.tags[tagName];
+    }
 }
