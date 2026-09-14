@@ -479,4 +479,79 @@ contract DVCS {
             chain[i] = buf[i];
         }
     }
+
+    // branches 
+    //
+    function updateBranch(bytes32 repoId, string calldata branchName, bytes32 newHead, bool force)
+        external
+        repoExists(repoId)
+        onlyContributor(repoId)
+    {
+        _updateBranch(repoId, branchName, newHead, force);
+    }
+
+    function _updateBranch(bytes32 repoId, string memory branchName, bytes32 newHead, bool force) internal {
+        if (bytes(branchName).length == 0) revert InvalidName();
+        Repository storage r = repositories[repoId];
+        if (!r.commits[newHead].exists) revert CommitNotFound();
+
+        bytes32 oldHead = r.branchHead[branchName];
+
+        if (!r.branchExists[branchName]) {
+            r.branchExists[branchName] = true;
+            r.branchNames.push(branchName);
+            r.branchHead[branchName] = newHead;
+            emit BranchCreated(repoId, branchName, newHead);
+            return;
+        }
+
+        if (!force) {
+            // Fast-forward only: newHead must have oldHead as an ancestor
+            // along its first-parent chain (bounded walk to avoid unbounded gas).
+            bool isDescendant = false;
+            bytes32 cur = newHead;
+            for (uint256 i = 0; i < 256 && cur != bytes32(0); i++) {
+                if (cur == oldHead) {
+                    isDescendant = true;
+                    break;
+                }
+                cur = r.commits[cur].parent1;
+            }
+            if (!isDescendant) revert NotFastForward();
+        } else {
+            // Force-push requires Maintainer/owner even though branch update
+            // itself only requires Contributor.
+            if (msg.sender != r.owner && r.roles[msg.sender] < Role.Maintainer) revert NotAuthorized();
+        }
+
+        r.branchHead[branchName] = newHead;
+        emit BranchUpdated(repoId, branchName, oldHead, newHead, force);
+    }
+
+    function deleteBranch(bytes32 repoId, string calldata branchName) external repoExists(repoId) onlyMaintainer(repoId) {
+        Repository storage r = repositories[repoId];
+        if (!r.branchExists[branchName]) revert BranchNotFound();
+        delete r.branchHead[branchName];
+        r.branchExists[branchName] = false;
+
+        uint256 len = r.branchNames.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (keccak256(bytes(r.branchNames[i])) == keccak256(bytes(branchName))) {
+                r.branchNames[i] = r.branchNames[len - 1];
+                r.branchNames.pop();
+                break;
+            }
+        }
+        emit BranchDeleted(repoId, branchName);
+    }
+
+    function branchHead(bytes32 repoId, string calldata branchName) external view repoExists(repoId) returns (bytes32) {
+        Repository storage r = repositories[repoId];
+        if (!r.branchExists[branchName]) revert BranchNotFound();
+        return r.branchHead[branchName];
+    }
+
+    function listBranches(bytes32 repoId) external view repoExists(repoId) returns (string[] memory) {
+        return repositories[repoId].branchNames;
+    }
 }
