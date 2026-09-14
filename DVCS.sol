@@ -262,4 +262,40 @@ contract DVCS {
         if (a == address(0)) revert HandleNotFound();
         return a;
     }
+
+    // repo managment
+    //
+    /// @notice Deterministically derive a repository id from its creator and name,
+    ///         so a given (owner, name) pair can only ever be created once.
+    function computeRepoId(address owner, string calldata name) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(owner, name));
+    }
+
+    function createRepository(string calldata name, bool isPrivate) external returns (bytes32 repoId) {
+        if (bytes(name).length == 0) revert InvalidName();
+        repoId = computeRepoId(msg.sender, name);
+        Repository storage r = repositories[repoId];
+        if (r.exists) revert RepositoryAlreadyExists();
+
+        r.owner = msg.sender;
+        r.name = name;
+        r.isPrivate = isPrivate;
+        r.exists = true;
+
+        repositoryIds.push(repoId);
+        emit RepositoryCreated(repoId, msg.sender, name, isPrivate);
+    }
+
+    function transferOwnership(bytes32 repoId, address newOwner) external repoExists(repoId) onlyOwner(repoId) {
+        if (newOwner == address(0)) revert ZeroAddress();
+        Repository storage r = repositories[repoId];
+        address previous = r.owner;
+        r.owner = newOwner;
+        emit OwnershipTransferred(repoId, previous, newOwner);
+    }
+
+    function setVisibility(bytes32 repoId, bool isPrivate) external repoExists(repoId) onlyOwner(repoId) {
+        repositories[repoId].isPrivate = isPrivate;
+        emit VisibilityChanged(repoId, isPrivate);
+    }
 }
