@@ -577,4 +577,141 @@ contract DVCS {
         if (!r.tagExists[tagName]) revert TagNotFound();
         return r.tags[tagName];
     }
+
+    // pull request prpose merging one branch into another require
+    // review ( approval from someone other than the author, with 
+    // Maintainer authority or higher) before the merge can happen. 
+    // this is a wrokflow dconvention layerd on top of branches/ commits git
+    // itselt has no concept of a PR, this contract adds one.
+    //
+    function setMinApprovals(bytes32 repoId, uint8 n) external repoExists(repoId) onlyMaintainer(repoId) {
+        repositories[repoId].minApprovals = n;
+    }
+
+    function openPullRequest(
+        bytes32 repoId,
+        string calldata sourceBranch,
+        string calldata targetBranch,
+        string calldata title,
+        string calldata description
+    ) external repoExists(repoId) onlyContributor(repoId) returns (uint256 prId) {
+        Repository storage r = repositories[repoId];
+        if (!r.branchExists[sourceBranch]) revert BranchNotFound();
+        if (!r.branchExists[targetBranch]) revert BranchNotFound();
+
+        prId = pullRequestCount[repoId];
+        pullRequestCount[repoId] = prId + 1;
+
+        PullRequest storage pr = pullRequests[repoId][prId];
+        pr.exists = true;
+        pr.sourceBranch = sourceBranch;
+        pr.targetBranch = targetBranch;
+        pr.author = msg.sender;
+        pr.title = title;
+        pr.description = description;
+        pr.status = PRStatus.Open;
+        pr.createdAt = uint64(block.timestamp);
+
+        emit PullRequestOpened(repoId, prId, msg.sender, sourceBranch, targetBranch, title);
+    }
+
+    /// @notice Approve a pull request. Requires Maintainer authority (or
+    ///         ownership) -- genuine review, not just "can push" -- and the
+    ///         author cannot approve their own PR.
+    function approvePullRequest(bytes32 repoId, uint256 prId) external repoExists(repoId) onlyMaintainer(repoId) {
+        PullRequest storage pr = pullRequests[repoId][prId];
+        if (!pr.exists) revert PRNotFound();
+        if (pr.status != PRStatus.Open) revert PRNotOpen();
+        if (msg.sender == pr.author) revert CannotApproveOwnPR();
+        if (pr.hasApproved[msg.sender]) revert AlreadyApproved();
+
+        pr.hasApproved[msg.sender] = true;
+        pr.approvalCount += 1;
+        emit PullRequestApproved(repoId, prId, msg.sender, pr.approvalCount);
+    }
+
+    /// @notice Merge a pull request's source branch into its target branch,
+    ///         once it has enough approvals. Uses the source branch's
+    ///         CURRENT head at merge time (not a snapshot from when the PR
+    ///         was opened), so pushing more commits to the source branch
+    ///         updates what an open PR would merge -- same as GitHub-style
+    ///         PRs. The merge itself still goes through the same
+    ///         fast-forward check as a normal branch update.
+    function mergePullRequest(bytes32 repoId, uint256 prId)
+        external
+        repoExists(repoId)
+        onlyContributor(repoId)
+        returns (bytes32 mergedCommit)
+    {
+        Repository storage r = repositories[repoId];
+        PullRequest storage pr = pullRequests[repoId][prId];
+        if (!pr.exists) revert PRNotFound();
+        if (pr.status != PRStatus.Open) revert PRNotOpen();
+
+        uint8 required = r.minApprovals == 0 ? 1 : r.minApprovals;
+        if (pr.approvalCount < required) revert NotEnoughApprovals();
+
+        bytes32 sourceHead = r.branchHead[pr.sourceBranch];
+        _updateBranch(repoId, pr.targetBranch, sourceHead, false);
+
+        pr.status = PRStatus.Merged;
+        pr.mergedCommit = sourceHead;
+        mergedCommit = sourceHead;
+        emit PullRequestMerged(repoId, prId, sourceHead, msg.sender);
+    }
+
+    /// @notice Close a PR without merging it. The author, or anyone with
+    ///         Maintainer authority or higher, may do this.
+    function closePullRequest(bytes32 repoId, uint256 prId) external repoExists(repoId) {
+        Repository storage r = repositories[repoId];
+        PullRequest storage pr = pullRequests[repoId][prId];
+        if (!pr.exists) revert PRNotFound();
+        if (pr.status != PRStatus.Open) revert PRNotOpen();
+        if (msg.sender != pr.author && msg.sender != r.owner && r.roles[msg.sender] < Role.Maintainer) {
+            revert NotAuthorized();
+        }
+        pr.status = PRStatus.Closed;
+        emit PullRequestClosed(repoId, prId, msg.sender);
+    }
+
+    function getPullRequest(bytes32 repoId, uint256 prId)
+        external
+        view
+        repoExists(repoId)
+        returns (
+            string memory sourceBranch,
+            string memory targetBranch,
+            address author,
+            string memory title,
+            string memory description,
+            uint8 status,
+            uint256 approvalCount,
+            bytes32 mergedCommit,
+            uint64 createdAt
+        )
+    {
+        PullRequest storage pr = pullRequests[repoId][prId];
+        if (!pr.exists) revert PRNotFound();
+        return (
+            pr.sourceBranch,
+            pr.targetBranch,
+            pr.author,
+            pr.title,
+            pr.description,
+            uint8(pr.status),
+            pr.approvalCount,
+            pr.mergedCommit,
+            pr.createdAt
+        );
+    }
+
+    function hasApprovedPullRequest(bytes32 repoId, uint256 prId, address account)
+        external
+        view
+        repoExists(repoId)
+        returns (bool)
+    {
+        return pullRequests[repoId][prId].hasApproved[account];
+    }
+
 }
