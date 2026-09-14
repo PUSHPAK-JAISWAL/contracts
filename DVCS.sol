@@ -146,4 +146,29 @@ contract DVCS {
         bool encrypted,
         bytes data
     );
+
+  //errors 
+    //
+  error RepositoryAlreadyExists();
+    error RepositoryNotFound();
+    error NotAuthorized();
+    error CommitAlreadyExists();
+    error CommitNotFound();
+    error ParentCommitNotFound();
+    error BranchAlreadyExists();
+    error BranchNotFound();
+    error TagAlreadyExists();
+    error TagNotFound();
+    error NotFastForward();
+    error InvalidName();
+    error ZeroAddress();
+    error InvalidChunk();
+    error ChunkTooLarge();
+    error TooManyChunks();
+    error PRNotFound();
+    error PRNotOpen();
+    error CannotApproveOwnPR();
+    error AlreadyApproved();
+    error NotEnoughApprovals();
+
 }
