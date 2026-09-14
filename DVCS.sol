@@ -30,4 +30,10 @@ contract DVCS {
   //needs to be retried (the CLI's local changelog and
   //'blob Announced" check make that resumable').
   uint256 public constant MAX_CHUNK_BYTES = 24_576;
+  
+  /// @notice sanity bound on how many chunk a single blob may be split
+  //into, keeping client-side reconstruction bounded even for
+  //unexpectedly large files(24kb*4096 =~ 96MB ceiling/blob).
+  uint256 public constant MAX_CHUNK_PER_BLOB = 4096;
+
 }
