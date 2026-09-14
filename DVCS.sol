@@ -325,5 +325,28 @@ contract DVCS {
       return repositories[repoId].collaborators;
     }
 
-    
+   //blob content
+    //
+    //@notice Publish one chuck of a blob's content as an event log.
+    //'blobhash' shoulbe keccak256 of the plaintext content
+    //regardless of encrypted, so it stays a stable identifier
+    //tied to what a commit's tree actually references clients 
+    //verify that hash themselves after decrypting.
+    //
+    function pushBlobChunk(
+      bytes32 repoId,
+      bytes32 blobhash,
+      uint32 chunkIndex,
+      uint32 totalChunks,
+      bool encrypted,
+      bytes calldata data
+    ) external repoExists(repoId) onlyContributor(repoId) {
+      if (totalChunks == 0 || chunkIndex >= totalChunks) revert InvalidChunk();
+        if (totalChunks > MAX_CHUNKS_PER_BLOB) revert TooManyChunks();
+        if (data.length > MAX_CHUNK_BYTES) revert ChunkTooLarge();
+        if (chunkIndex == 0) {
+            blobAnnounced[repoId][blobHash] = true;
+        }
+        emit BlobChunk(repoId, blobHash, chunkIndex, totalChunks, encrypted, data);
+    }
 }
