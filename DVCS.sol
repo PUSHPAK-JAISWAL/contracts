@@ -93,5 +93,21 @@ contract DVCS {
     mapping(address => bool) hasApproved;
   }
 
+  // storage 
+  //
+  mapping(bytes32 => Repository) private repositories;
+  bytes32[] public repositoryIds;
 
+  ///@dev repoId => blobHash -> announced. a blob only needs to be 
+  //pushed once even if referenced by many commits
+  //this lets a pushing client cheaply check whether its
+  //can skip re-uploading one.
+  //
+  mapping(bytes32 => mapping( bytes32 => bool)) public blobAnnounced;
+
+  /// @dev repoid -> pr id -> PullRequest, and repoId => next pr identifier
+  //also usable as how many prs exist for iteration.
+  //
+  mapping(bytes32 => mapping(uint256 => PullRequest)) private pullRequests;
+  mapping(bytes32 => uint256) public pullRequestCount;
 }
