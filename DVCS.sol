@@ -713,5 +713,20 @@ contract DVCS {
     {
         return pullRequests[repoId][prId].hasApproved[account];
     }
+    
+  // Read Helper
+    //
+    function repositoryInfo(bytes32 repoId)
+      external
+      view
+      repoExists(repoId)
+      returns(address owner, string memory name, bool isPrivate, uint256 commitCount, uint256 branchCount) 
+      {
+        Repository storage r = repositories[repoId];
+        return(r.owner,r.name,r.isPrivate,r.commitCount,r.branchNames.length);
+      }
 
+    function repositoryCount() external view returns(uint256) {
+      return repositoryIds.length;
+    }
 }
