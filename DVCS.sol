@@ -196,4 +196,70 @@ contract DVCS {
         if (repositories[repoId].owner != msg.sender) revert NotAuthorized();
         _;
     }
+
+  //identity registry
+    //
+  //repo owners often don't know a collaborator's raw 0x address 
+    //this lets an account claim a human readable handle (an email 
+    //address is a natural choice, but any string works) so others can 
+    //refere to they by that instead. Claiming a handle is a transaction
+    //from the account begin claimed for, so a handle to address pointing
+    //is cryptographically signed by that address own key nobody 
+    //else can claim a handle "as" your address 
+    //
+    // this proves address ownership not inbox ownership 
+    // nothing here verifies that the string you register is an email 
+    // address you actually control that would require an off chain
+    // verifier briding email to chain, 
+    // whis is a different kind of system that a smart contract can be on its own.
+    // treat a handle as a claimed nickname bound to a key,
+    // the same trust level as a git commit's author field useful for
+    // humans, not a substitute for verifying identity out of band before 
+    // you grant someone a role.
+    //
+    mapping(string => address) public handleOwner; // handle => address (address(0) if unclaimed)
+    mapping(address => string) public addressHandle; // address => their current handle ("" if none)
+
+    error HandleTaken();
+    error HandleNotFound();
+    error NoHandleRegistered();
+
+    event HandleRegistered(address indexed account, string handle);
+    event HandleReleased(address indexed account, string handle);
+
+    /// @notice Claim `handle` for msg.sender. If msg.sender already holds a
+    ///         different handle, it is released first (one handle per
+    ///         address at a time). Reverts if someone else already holds
+    ///         this handle.
+    function registerHandle(string calldata handle) external {
+        if (bytes(handle).length == 0) revert InvalidName();
+        address current = handleOwner[handle];
+        if (current != address(0) && current != msg.sender) revert HandleTaken();
+
+        string memory old = addressHandle[msg.sender];
+        if (bytes(old).length > 0) {
+            delete handleOwner[old];
+        }
+        handleOwner[handle] = msg.sender;
+        addressHandle[msg.sender] = handle;
+        emit HandleRegistered(msg.sender, handle);
+    }
+
+    /// @notice Release msg.sender's currently registered handle, if any.
+    function releaseHandle() external {
+        string memory old = addressHandle[msg.sender];
+        if (bytes(old).length == 0) revert NoHandleRegistered();
+        delete handleOwner[old];
+        delete addressHandle[msg.sender];
+        emit HandleReleased(msg.sender, old);
+    }
+
+    /// @notice Look up the address currently holding `handle`. Reverts if
+    ///         unclaimed, so callers can distinguish "not found" from
+    ///         "found, address(0)" without an extra existence flag.
+    function resolveHandle(string calldata handle) external view returns (address) {
+        address a = handleOwner[handle];
+        if (a == address(0)) revert HandleNotFound();
+        return a;
+    }
 }
