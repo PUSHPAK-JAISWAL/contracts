@@ -298,4 +298,32 @@ contract DVCS {
         repositories[repoId].isPrivate = isPrivate;
         emit VisibilityChanged(repoId, isPrivate);
     }
+
+  // Access control
+    //
+    function setCollaboratorRole(byte32 repoId, address account, Role role)
+      external
+      repoExists(repoId)
+      onlyMaintainer(repoId)
+      {
+        if(account == address(0)) revert ZeroAddress();
+        Repository storage r = reppositories[repoId];
+        if(r.roles[account] == Role.None && role != Role.None) {
+          r.collaborators.push(account);
+        }
+        r.roles[account] = role;
+        emit CollaboratorUpdated(repoId,account,role);
+    }
+
+    function roleOf(bytes32 repoId, address account) external view repoExists(repoId) {
+      Repository storage r = repositories[repoId];
+      if(account == r.owner) return Role.Maintainer;
+      return r.roles[account];
+    }
+
+    function collaborators(bytes32 repoId) external view repoExists(repoId) returns(address[] memory) {
+      return repositories[repoId].collaborators;
+    }
+
+    
 }
