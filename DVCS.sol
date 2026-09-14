@@ -349,4 +349,134 @@ contract DVCS {
         }
         emit BlobChunk(repoId, blobHash, chunkIndex, totalChunks, encrypted, data);
     }
+
+  // commits
+    //
+  /// @notice Deterministic commit hash, mirroring how the CLI computes it
+    ///         client-side before submitting the transaction.
+    function computeCommitHash(
+        bytes32 repoId,
+        bytes32 parent1,
+        bytes32 parent2,
+        bytes32 treeRoot,
+        string calldata message,
+        address author,
+        uint64 timestamp
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(repoId, parent1, parent2, treeRoot, message, author, timestamp));
+    }
+
+    /// @notice Push a new commit object. Does not move any branch pointer;
+    ///         call `updateBranch` (or `pushToBranch`) afterwards.
+    function pushCommit(
+        bytes32 repoId,
+        bytes32 parent1,
+        bytes32 parent2,
+        bytes32 treeRoot,
+        string calldata message,
+        uint64 timestamp
+    ) public repoExists(repoId) onlyContributor(repoId) returns (bytes32 commitHash) {
+        Repository storage r = repositories[repoId];
+
+        if (parent1 != bytes32(0) && !r.commits[parent1].exists) revert ParentCommitNotFound();
+        if (parent2 != bytes32(0) && !r.commits[parent2].exists) revert ParentCommitNotFound();
+
+        commitHash = computeCommitHash(repoId, parent1, parent2, treeRoot, message, msg.sender, timestamp);
+        if (r.commits[commitHash].exists) revert CommitAlreadyExists();
+
+        r.commits[commitHash] = Commit({
+            parent1: parent1,
+            parent2: parent2,
+            treeRoot: treeRoot,
+            cid: "",
+            message: message,
+            author: msg.sender,
+            timestamp: timestamp,
+            exists: true
+        });
+        r.commitCount += 1;
+
+        emit CommitPushed(repoId, commitHash, parent1, parent2, msg.sender, "");
+    }
+
+    /// @notice Convenience wrapper: push a commit and set its off-chain CID
+    ///         in one transaction, then fast-forward/create the given branch.
+    function pushToBranch(
+        bytes32 repoId,
+        bytes32 parent1,
+        bytes32 parent2,
+        bytes32 treeRoot,
+        string calldata message,
+        uint64 timestamp,
+        string calldata cid,
+        string calldata branchName,
+        bool force
+    ) external returns (bytes32 commitHash) {
+        commitHash = pushCommit(repoId, parent1, parent2, treeRoot, message, timestamp);
+        if (bytes(cid).length != 0) {
+            setCommitCid(repoId, commitHash, cid);
+        }
+        _updateBranch(repoId, branchName, commitHash, force);
+    }
+
+    function setCommitCid(bytes32 repoId, bytes32 commitHash, string calldata cid)
+        public
+        repoExists(repoId)
+        onlyContributor(repoId)
+    {
+        Repository storage r = repositories[repoId];
+        Commit storage c = r.commits[commitHash];
+        if (!c.exists) revert CommitNotFound();
+        if (c.author != msg.sender && r.owner != msg.sender && r.roles[msg.sender] < Role.Maintainer) revert NotAuthorized();
+        c.cid = cid;
+    }
+
+    function getCommit(bytes32 repoId, bytes32 commitHash)
+        external
+        view
+        repoExists(repoId)
+        returns (
+            bytes32 parent1,
+            bytes32 parent2,
+            bytes32 treeRoot,
+            string memory cid,
+            string memory message,
+            address author,
+            uint64 timestamp
+        )
+    {
+        Commit storage c = repositories[repoId].commits[commitHash];
+        if (!c.exists) revert CommitNotFound();
+        return (c.parent1, c.parent2, c.treeRoot, c.cid, c.message, c.author, c.timestamp);
+    }
+
+    function commitExists(bytes32 repoId, bytes32 commitHash) external view repoExists(repoId) returns (bool) {
+        return repositories[repoId].commits[commitHash].exists;
+    }
+
+    /// @notice Walk up to `maxDepth` ancestors of `start` along first-parent
+    ///         links, for cheap on-chain `log` support. Stops early at the
+    ///         root commit. Use off-chain event indexing for full/merge history.
+    function getFirstParentChain(bytes32 repoId, bytes32 start, uint256 maxDepth)
+        external
+        view
+        repoExists(repoId)
+        returns (bytes32[] memory chain)
+    {
+        Repository storage r = repositories[repoId];
+        bytes32[] memory buf = new bytes32[](maxDepth);
+        uint256 n = 0;
+        bytes32 cur = start;
+        while (cur != bytes32(0) && n < maxDepth) {
+            Commit storage c = r.commits[cur];
+            if (!c.exists) break;
+            buf[n] = cur;
+            n += 1;
+            cur = c.parent1;
+        }
+        chain = new bytes32[](n);
+        for (uint256 i = 0; i < n; i++) {
+            chain[i] = buf[i];
+        }
+    }
 }
